@@ -1,6 +1,13 @@
 import csv
 import os
 from datetime import datetime
+import scheduler
+
+#  main function or when handling user input 
+reminder_date = input("Enter the reminder date (YYYY-MM-DD): ")
+reminder_message = input("Enter your reminder message: ")
+scheduler.schedule_reminder(reminder_date, reminder_message)
+
 
 # File paths for Tickets
 ACTIVE_TICKETS_FILE = 'tickets.csv'
