@@ -1,15 +1,20 @@
 import csv
 import os
+from datetime import datetime
 
-# File paths
+# CSV file paths
 ACTIVE_FILE = 'tickets.csv'
 ARCHIVE_FILE = 'archive_tickets.csv'
 
+# CSV headers
+ACTIVE_HEADER = ["Ticket Number", "Ticket Name", "Status", "Log Date"]
+ARCHIVE_HEADER = ["Ticket Number", "Ticket Name", "Status", "Log Date", "Done Date"]
+
 def main():
-    """Main menu loop."""
-    # Ensure files exist and have correct headers
-    initialize_csv(ACTIVE_FILE)
-    initialize_csv(ARCHIVE_FILE)
+    """Main program loop."""
+    # Ensure CSV files exist with proper headers
+    initialize_csv(ACTIVE_FILE, ACTIVE_HEADER)
+    initialize_csv(ARCHIVE_FILE, ARCHIVE_HEADER)
 
     while True:
         print("\nMain Menu:")
@@ -38,52 +43,54 @@ def main():
 # Initialization and CSV Helper Functions
 # ------------------------------------------------------------------------------
 
-def initialize_csv(filepath: str):
+def initialize_csv(filepath: str, header: list):
     """
-    Create the CSV file with a header if it doesn't exist or if the header is incorrect.
+    Create or fix the CSV file so that it has the specified header.
     """
     if not os.path.exists(filepath):
+        # Create a new file with the header
         with open(filepath, 'w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            writer.writerow(["Ticket Number", "Ticket Name", "Status"])
+            writer.writerow(header)
     else:
-        # Check if file has correct header; if not, rewrite it
+        # Verify the file has the correct header; if not, overwrite it
         with open(filepath, 'r', newline='', encoding='utf-8') as file:
             reader = csv.reader(file)
-            header = next(reader, None)
-            # If header is missing or malformed, rewrite the file
-            if not header or len(header) < 3:
+            existing_header = next(reader, None)
+            if existing_header != header:
                 with open(filepath, 'w', newline='', encoding='utf-8') as fw:
                     writer = csv.writer(fw)
-                    writer.writerow(["Ticket Number", "Ticket Name", "Status"])
+                    writer.writerow(header)
 
-def read_tickets_from_csv(filepath: str):
+def read_tickets_from_csv(filepath: str, expected_columns: int):
     """
     Read tickets from the CSV, skipping the header and ignoring any malformed rows.
-    Returns a list of valid [ticket_number, ticket_name, status] rows.
+    Returns a list of valid rows, each row being a list of strings.
     """
     tickets = []
     if not os.path.exists(filepath):
-        return tickets  # File doesn't exist, return empty list
+        return tickets
 
     with open(filepath, 'r', newline='', encoding='utf-8') as file:
         reader = csv.reader(file)
-        header = next(reader, None)  # skip the header row
-        # Read valid rows (exactly 3 columns)
+        _ = next(reader, None)  # Skip the header
         for row in reader:
-            if len(row) == 3:
+            if len(row) == expected_columns:
                 tickets.append(row)
     return tickets
 
-def write_tickets_to_csv(filepath: str, tickets: list):
+def write_tickets_to_csv(filepath: str, header: list, tickets: list):
     """
-    Write the list of tickets to the CSV file, overwriting existing data,
-    and re-adding the header row.
+    Overwrite the CSV with the given header and list of tickets.
     """
     with open(filepath, 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
-        writer.writerow(["Ticket Number", "Ticket Name", "Status"])
+        writer.writerow(header)
         writer.writerows(tickets)
+
+def current_date():
+    """Return the current date/time as a string."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # ------------------------------------------------------------------------------
 # Core Features
@@ -95,12 +102,16 @@ def add_ticket():
     ticket_name = input("Enter ticket name: ")
     status = select_status()
 
+    # Prepare the new ticket with the current date (log date)
+    log_date = current_date()
+    new_ticket = [ticket_number, ticket_name, status, log_date]
+
     # Read existing tickets
-    tickets = read_tickets_from_csv(ACTIVE_FILE)
-    # Append the new ticket
-    tickets.append([ticket_number, ticket_name, status])
+    tickets = read_tickets_from_csv(ACTIVE_FILE, 4)
+    tickets.append(new_ticket)
+
     # Write back to CSV
-    write_tickets_to_csv(ACTIVE_FILE, tickets)
+    write_tickets_to_csv(ACTIVE_FILE, ACTIVE_HEADER, tickets)
 
 def select_status():
     """Prompt user to select a status from a predefined list."""
@@ -119,27 +130,27 @@ def select_status():
             print("Invalid input. Please enter a number.")
 
 def view_tickets():
-    """View all tickets currently in the active tickets file."""
-    tickets = read_tickets_from_csv(ACTIVE_FILE)
+    """View all tickets currently in the active tickets file (excluding log date)."""
+    tickets = read_tickets_from_csv(ACTIVE_FILE, 4)
     if not tickets:
         print("\nNo tickets available.")
         return
 
     print("\nAvailable Tickets:")
     for idx, ticket in enumerate(tickets, start=1):
+        # ticket = [ticket_number, ticket_name, status, log_date]
         print(f"{idx}. Ticket Number: {ticket[0]}, Ticket Name: {ticket[1]}, Status: {ticket[2]}")
 
 def update_ticket_status():
     """
     List all tickets, let user pick one by its displayed index, and update its status.
-    If the new status is 'Done', move the ticket to the archive.
+    If the new status is 'Done', move the ticket to the archive (with Done Date).
     """
-    tickets = read_tickets_from_csv(ACTIVE_FILE)
+    tickets = read_tickets_from_csv(ACTIVE_FILE, 4)
     if not tickets:
         print("\nNo tickets available to update.")
         return
 
-    # Display the tickets
     print("\nTickets:")
     for idx, ticket in enumerate(tickets, start=1):
         print(f"{idx}. Ticket Number: {ticket[0]}, Ticket Name: {ticket[1]}, Status: {ticket[2]}")
@@ -156,42 +167,48 @@ def update_ticket_status():
 
     # Update the status
     new_status = select_status()
-    tickets[choice - 1][2] = new_status
-    write_tickets_to_csv(ACTIVE_FILE, tickets)
+    tickets[choice - 1][2] = new_status  # index 2 = Status
+
+    # Write back to the active tickets file
+    write_tickets_to_csv(ACTIVE_FILE, ACTIVE_HEADER, tickets)
 
     # If the status is Done, move to archive
     if new_status == "Done":
         move_ticket_to_archive(tickets[choice - 1])
 
 def remove_ticket():
-    """
-    Remove a ticket by its ticket number from the active tickets.
-    """
+    """Remove a ticket by its ticket number from the active tickets."""
     ticket_number = input("\nEnter the ticket number to remove: ")
+    tickets = read_tickets_from_csv(ACTIVE_FILE, 4)
 
-    tickets = read_tickets_from_csv(ACTIVE_FILE)
     # Filter out the ticket with the matching ticket number
     filtered_tickets = [t for t in tickets if t[0] != ticket_number]
 
     if len(filtered_tickets) == len(tickets):
         print("No matching ticket found.")
     else:
-        write_tickets_to_csv(ACTIVE_FILE, filtered_tickets)
+        write_tickets_to_csv(ACTIVE_FILE, ACTIVE_HEADER, filtered_tickets)
         print(f"Ticket '{ticket_number}' has been removed.")
 
 def move_ticket_to_archive(ticket: list):
     """
-    Append the given ticket to the archive file and remove it from the active tickets.
+    Append the given ticket to the archive file with an extra 'Done Date',
+    and remove it from the active tickets.
     """
-    # Read archive tickets, append the new one, write back
-    archive_tickets = read_tickets_from_csv(ARCHIVE_FILE)
-    archive_tickets.append(ticket)
-    write_tickets_to_csv(ARCHIVE_FILE, archive_tickets)
+    # ticket = [ticket_number, ticket_name, status, log_date]
+    done_date = current_date()
+    archived_ticket = ticket + [done_date]  # now [num, name, status, log_date, done_date]
 
-    # Remove from active tickets
-    active_tickets = read_tickets_from_csv(ACTIVE_FILE)
+    # Append to archive
+    archive_tickets = read_tickets_from_csv(ARCHIVE_FILE, 5)
+    archive_tickets.append(archived_ticket)
+    write_tickets_to_csv(ARCHIVE_FILE, ARCHIVE_HEADER, archive_tickets)
+
+    # Remove from active
+    active_tickets = read_tickets_from_csv(ACTIVE_FILE, 4)
+    # Compare the first 4 columns, since the archived ticket has 5
     active_tickets = [t for t in active_tickets if t != ticket]
-    write_tickets_to_csv(ACTIVE_FILE, active_tickets)
+    write_tickets_to_csv(ACTIVE_FILE, ACTIVE_HEADER, active_tickets)
 
 # ------------------------------------------------------------------------------
 # Entry Point
